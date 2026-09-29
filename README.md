@@ -25,6 +25,7 @@ Run:
 
 ```bash
 python3 src/battery.py
+```
 
 ## Example output
 
@@ -39,3 +40,16 @@ Voltage     : 4.187 V
 Temperature : 23°C
 Fault       : False
 ```
+
+## Roadmap
+
+- [x] PiJuice battery monitoring
+- [ ] System / CPU monitoring
+- [ ] Low-battery safe shutdown
+- [ ] PiJuice hardware power-off
+- [ ] Automatic restart after sufficient recharge
+- [ ] Solar power integration
+- [ ] Historical data logging
+- [ ] Web dashboard
+- [ ] MQTT
+- [ ] iPhone integration
