@@ -44,12 +44,17 @@ Fault       : False
 ## Roadmap
 
 - [x] PiJuice battery monitoring
-- [ ] System / CPU monitoring
+- [x] Low-battery detection
+- [x] External power detection
+- [x] Low-battery confirmation (3 checks, 60 seconds apart)
+- [x] Low-battery safety tests
 - [ ] Low-battery safe shutdown
 - [ ] PiJuice hardware power-off
 - [ ] Automatic restart after sufficient recharge
+- [ ] System / CPU monitoring
 - [ ] Solar power integration
 - [ ] Historical data logging
 - [ ] Web dashboard
 - [ ] MQTT
 - [ ] iPhone integration
+
