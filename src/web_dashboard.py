@@ -1,14 +1,50 @@
 #!/usr/bin/env python3
 
+import csv
 import html
+import json
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from pijuice_reader import read_snapshot
 
 
 HOST = "0.0.0.0"
 PORT = 8080
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+HISTORY_FILE = PROJECT_ROOT / "data" / "pijuice_history.csv"
+HISTORY_LIMIT = 120
+
+
+def read_history(limit=HISTORY_LIMIT):
+    if not HISTORY_FILE.exists():
+        return []
+
+    with HISTORY_FILE.open(newline="") as file:
+        rows = list(csv.DictReader(file))
+
+    history = []
+
+    for row in rows[-limit:]:
+        try:
+            history.append(
+                {
+                    "timestamp": row["timestamp"],
+                    "charge": int(row["charge"]),
+                    "voltage": float(row["voltage"]),
+                    "temperature": int(row["temperature"]),
+                    "temperature_status": row["temperature_status"],
+                    "battery": row["battery"],
+                    "power_input": row["power_input"],
+                    "fault": row["fault"].lower() == "true",
+                }
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    return history
 
 
 def build_page():
@@ -19,7 +55,9 @@ def build_page():
         reading = None
         error = str(exc)
 
-    updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    updated = datetime.now().astimezone().strftime(
+        "%Y-%m-%d %H:%M:%S %Z"
+    )
 
     if error:
         content = f"""
@@ -45,12 +83,16 @@ def build_page():
 
             <div class="card">
                 <div class="label">Battery state</div>
-                <div class="value small">{html.escape(str(reading["battery"]))}</div>
+                <div class="value small">
+                    {html.escape(str(reading["battery"]))}
+                </div>
             </div>
 
             <div class="card">
                 <div class="label">External power</div>
-                <div class="value small">{html.escape(str(reading["power_input"]))}</div>
+                <div class="value small">
+                    {html.escape(str(reading["power_input"]))}
+                </div>
             </div>
 
             <div class="card">
@@ -76,132 +118,420 @@ def build_page():
         </div>
         """
 
-    return f"""<!doctype html>
+    page = """<!doctype html>
 <html lang="en">
+
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
 <meta http-equiv="refresh" content="5">
+
 <title>PiJuice Monitor</title>
 
 <style>
-    body {{
-        margin: 0;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f4f5f7;
-        color: #202124;
-    }}
+body {
+    margin: 0;
+    font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    background: #f4f5f7;
+    color: #202124;
+}
 
-    .container {{
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 32px 20px;
-    }}
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 20px;
+}
 
-    h1 {{
-        margin-bottom: 6px;
-    }}
+h1 {
+    margin-bottom: 6px;
+}
 
-    .subtitle {{
-        color: #666;
-        margin-bottom: 28px;
-    }}
+.subtitle {
+    color: #666;
+    margin-bottom: 28px;
+}
 
-    .grid {{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 16px;
-    }}
+.grid {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
 
-    .card {{
-        background: white;
-        border-radius: 14px;
-        padding: 22px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
-    }}
+.card {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.07);
+}
 
-    .label {{
-        color: #666;
-        font-size: 0.9rem;
-        margin-bottom: 8px;
-    }}
+.label {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
 
-    .value {{
-        font-size: 2rem;
-        font-weight: 650;
-    }}
+.value {
+    font-size: 2rem;
+    font-weight: 650;
+}
 
-    .value.small {{
-        font-size: 1.25rem;
-        word-break: break-word;
-    }}
+.value.small {
+    font-size: 1.25rem;
+    word-break: break-word;
+}
 
-    .status {{
-        display: inline-block;
-        margin-top: 12px;
-        padding: 5px 9px;
-        border-radius: 8px;
-        font-size: 0.8rem;
-        font-weight: 700;
-    }}
+.status {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 5px 9px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
 
-    .normal {{
-        background: #e8f5e9;
-        color: #1b5e20;
-    }}
+.normal {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
 
-    .warning {{
-        background: #fff3e0;
-        color: #b45309;
-    }}
+.warning {
+    background: #fff3e0;
+    color: #b45309;
+}
 
-    .error {{
-        background: white;
-        border-radius: 14px;
-        padding: 22px;
-        color: #b00020;
-    }}
+.error {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+    color: #b00020;
+}
 
-    footer {{
-        margin-top: 28px;
-        color: #777;
-        font-size: 0.85rem;
-    }}
+.history-section {
+    margin-top: 32px;
+}
+
+.history-section h2 {
+    margin-bottom: 16px;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.07);
+}
+
+#battery-chart {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.chart-grid {
+    stroke: #e5e7eb;
+    stroke-width: 1;
+}
+
+.chart-line {
+    fill: none;
+    stroke: #2563eb;
+    stroke-width: 3;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.chart-label {
+    fill: #777;
+    font-size: 12px;
+}
+
+.chart-info {
+    margin-top: 12px;
+    color: #777;
+    font-size: 0.85rem;
+}
+
+footer {
+    margin-top: 28px;
+    color: #777;
+    font-size: 0.85rem;
+}
 </style>
 </head>
 
 <body>
+
 <div class="container">
 
     <h1>PiJuice Monitor</h1>
-    <div class="subtitle">Raspberry Pi 3B+ Power Monitor</div>
 
-    {content}
+    <div class="subtitle">
+        Raspberry Pi 3B+ Power Monitor
+    </div>
+
+    __CONTENT__
+
+    <section class="history-section">
+
+        <h2>Battery History</h2>
+
+        <div class="chart-card">
+
+            <svg
+                id="battery-chart"
+                viewBox="0 0 800 260"
+                role="img"
+                aria-label="Battery charge history">
+            </svg>
+
+            <div
+                id="battery-chart-info"
+                class="chart-info">
+                Loading historical data...
+            </div>
+
+        </div>
+
+    </section>
 
     <footer>
-        Last updated: {html.escape(updated)}<br>
-        Auto refresh: 5 seconds
+        Last updated: __UPDATED__<br>
+        Live page refresh: 5 seconds<br>
+        Historical sampling: 60 seconds
     </footer>
 
 </div>
+
+<script>
+async function loadBatteryHistory() {
+
+    const svg =
+        document.getElementById("battery-chart");
+
+    const info =
+        document.getElementById("battery-chart-info");
+
+    try {
+
+        const response = await fetch(
+            "/api/history",
+            {cache: "no-store"}
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "HTTP " + response.status
+            );
+        }
+
+        const history = await response.json();
+
+        if (history.length < 2) {
+            info.textContent =
+                "Not enough historical data yet.";
+            return;
+        }
+
+        const width = 800;
+        const height = 260;
+
+        const left = 50;
+        const right = 20;
+        const top = 20;
+        const bottom = 40;
+
+        const plotWidth =
+            width - left - right;
+
+        const plotHeight =
+            height - top - bottom;
+
+        const points = history.map(
+            (row, index) => {
+
+                const x =
+                    left +
+                    (
+                        index /
+                        (history.length - 1)
+                    ) *
+                    plotWidth;
+
+                const y =
+                    top +
+                    (
+                        (100 - row.charge) /
+                        100
+                    ) *
+                    plotHeight;
+
+                return (
+                    x.toFixed(1) +
+                    "," +
+                    y.toFixed(1)
+                );
+            }
+        ).join(" ");
+
+        let grid = "";
+
+        for (
+            const charge
+            of [0, 25, 50, 75, 100]
+        ) {
+
+            const y =
+                top +
+                (
+                    (100 - charge) /
+                    100
+                ) *
+                plotHeight;
+
+            grid +=
+                '<line ' +
+                'class="chart-grid" ' +
+                'x1="' + left + '" ' +
+                'y1="' + y + '" ' +
+                'x2="' +
+                    (width - right) +
+                    '" ' +
+                'y2="' + y + '">' +
+                '</line>';
+
+            grid +=
+                '<text ' +
+                'class="chart-label" ' +
+                'x="' +
+                    (left - 8) +
+                    '" ' +
+                'y="' +
+                    (y + 4) +
+                    '" ' +
+                'text-anchor="end">' +
+                charge +
+                '%' +
+                '</text>';
+        }
+
+        svg.innerHTML =
+            grid +
+            '<polyline ' +
+            'class="chart-line" ' +
+            'points="' +
+            points +
+            '">' +
+            '</polyline>';
+
+        const first =
+            new Date(history[0].timestamp);
+
+        const last =
+            new Date(
+                history[
+                    history.length - 1
+                ].timestamp
+            );
+
+        info.textContent =
+            history.length +
+            " samples · " +
+            first.toLocaleTimeString() +
+            " – " +
+            last.toLocaleTimeString();
+
+    } catch (error) {
+
+        info.textContent =
+            "Unable to load historical data: " +
+            error;
+    }
+}
+
+loadBatteryHistory();
+</script>
+
 </body>
 </html>
 """
+
+    return (
+        page
+        .replace("__CONTENT__", content)
+        .replace(
+            "__UPDATED__",
+            html.escape(updated),
+        )
+    )
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        if self.path not in ("/", "/index.html"):
+
+        if self.path == "/api/history":
+
+            data = json.dumps(
+                read_history()
+            ).encode("utf-8")
+
+            self.send_response(200)
+
+            self.send_header(
+                "Content-Type",
+                "application/json; charset=utf-8",
+            )
+
+            self.send_header(
+                "Content-Length",
+                str(len(data)),
+            )
+
+            self.send_header(
+                "Cache-Control",
+                "no-store",
+            )
+
+            self.end_headers()
+
+            self.wfile.write(data)
+            return
+
+        if self.path not in (
+            "/",
+            "/index.html",
+        ):
             self.send_error(404)
             return
 
         page = build_page().encode("utf-8")
 
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(page)))
-        self.send_header("Cache-Control", "no-store")
+
+        self.send_header(
+            "Content-Type",
+            "text/html; charset=utf-8",
+        )
+
+        self.send_header(
+            "Content-Length",
+            str(len(page)),
+        )
+
+        self.send_header(
+            "Cache-Control",
+            "no-store",
+        )
+
         self.end_headers()
 
         self.wfile.write(page)
@@ -211,19 +541,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
+
+    server = ThreadingHTTPServer(
+        (HOST, PORT),
+        DashboardHandler,
+    )
 
     print("PiJuice Web Dashboard")
     print("---------------------")
-    print(f"Listening on : http://{HOST}:{PORT}")
-    print(f"LAN address  : http://<raspberry-pi-hostname>.local:{PORT}")
+    print(
+        f"Listening on : "
+        f"http://{HOST}:{PORT}"
+    )
+
+    print(
+        f"LAN address  : "
+        f"http://<raspberry-pi-hostname>.local:{PORT}"
+    )
     print()
+
     print("Press Ctrl+C to stop.")
 
     try:
         server.serve_forever()
+
     except KeyboardInterrupt:
         print("\nDashboard stopped.")
+
     finally:
         server.server_close()
 
