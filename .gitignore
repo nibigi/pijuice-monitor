@@ -5,3 +5,10 @@ venv/
 .env
 *.log
 *.db
+
+# Runtime data
+data/*.csv
+logs/*.csv
+
+# Local backup files
+*.bak

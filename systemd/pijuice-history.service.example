@@ -1,0 +1,14 @@
+[Unit]
+Description=PiJuice Historical Data Logger
+After=multi-user.target
+
+[Service]
+Type=simple
+User=<username>
+WorkingDirectory=/home/<username>/pijuice-monitor
+ExecStart=/usr/bin/python3 /home/<username>/pijuice-monitor/src/history_logger.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
