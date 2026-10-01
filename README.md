@@ -25,6 +25,8 @@ Currently developed and tested on:
 - Battery voltage
 - Battery temperature
 - PiJuice fault status
+- Shared PiJuice sensor reader
+- Battery temperature anomaly flagging
 - Low-battery detection
 - Low-battery confirmation before shutdown
 - Safe-shutdown dry-run workflow
@@ -32,6 +34,10 @@ Currently developed and tested on:
 - Low-battery simulation mode
 - PiJuice delayed hardware power-off
 - Persistent wake-up-on-charge configuration
+- Historical battery data logging
+- 60-second CSV data collection
+- Historical logger managed by systemd
+- Automatic historical logger startup after reboot
 
 ## Installation
 
@@ -104,14 +110,18 @@ Example output:
 PiJuice Battery
 ---------------
 
-Charge      : 35%
+Charge      : 79%
 Battery     : CHARGING_FROM_IN
 Power input : PRESENT
 5V IO       : NOT_PRESENT
-Voltage     : 4.187 V
-Temperature : 23°C
+Voltage     : 3.987 V
+Temperature : 43°C
+Temp status : NORMAL
 Fault       : False
 ```
+
+The battery status command uses the shared PiJuice reader in
+`src/pijuice_reader.py`.
 
 ### Low-battery monitor
 
@@ -168,6 +178,96 @@ Would schedule PiJuice power-off in 60 seconds and halt Linux.
 The simulation currently uses dry-run mode and does not shut down the
 Raspberry Pi.
 
+## Historical Data Logging
+
+PiJuice Monitor can record battery and power information to a CSV file every
+60 seconds.
+
+Run manually with:
+
+```bash
+python3 src/history_logger.py
+```
+
+Historical data is stored in:
+
+```text
+data/pijuice_history.csv
+```
+
+The CSV contains:
+
+```text
+timestamp
+charge
+battery
+power_input
+io_5v
+voltage
+temperature
+temperature_status
+fault
+```
+
+Example record:
+
+```text
+2026-10-01T20:27:41+01:00,83,CHARGING_FROM_IN,PRESENT,NOT_PRESENT,4.004,41,NORMAL,False
+```
+
+Runtime CSV files under `data/` and diagnostic CSV files under `logs/` are
+excluded from Git.
+
+### Historical logger systemd service
+
+A systemd service is included at:
+
+```text
+systemd/pijuice-history.service
+```
+
+The historical logger has been tested running continuously in the background
+and automatically starting again after a Raspberry Pi reboot.
+
+Check the service:
+
+```bash
+sudo systemctl status pijuice-history.service
+```
+
+Start it:
+
+```bash
+sudo systemctl start pijuice-history.service
+```
+
+Stop it:
+
+```bash
+sudo systemctl stop pijuice-history.service
+```
+
+Enable automatic startup:
+
+```bash
+sudo systemctl enable pijuice-history.service
+```
+
+View recent historical records:
+
+```bash
+tail data/pijuice_history.csv
+```
+
+The current service file was tested with the project installed at:
+
+```text
+/home/<username>/pijuice-monitor
+```
+
+The paths in the service file must be adjusted if the project is installed
+under a different user or directory.
+
 ## Power Management
 
 ### Hardware power-off
@@ -222,6 +322,28 @@ boot/shutdown cycles when using an intermittent power source such as solar.
 
 Automatic wake-up after recharge still needs to be tested end-to-end.
 
+## Temperature Diagnostics
+
+A diagnostic logger is available for investigating the intermittent PiJuice
+battery temperature readings.
+
+Run:
+
+```bash
+python3 src/temperature_diagnostics.py
+```
+
+The diagnostic tool records readings every 5 seconds until stopped with
+`Ctrl+C`.
+
+Diagnostic CSV files are written under:
+
+```text
+logs/
+```
+
+These files are excluded from Git.
+
 ## Tests
 
 Run the low-battery safety tests with:
@@ -249,7 +371,7 @@ python3 -m py_compile src/low_battery_monitor.py
 The PiJuice battery temperature reading is currently unstable.
 
 During testing, the reported temperature repeatedly jumped between plausible
-values around 37–44°C and implausible values of 80–90°C within only a few
+values around 41–43°C and anomalous values around 80–90°C within only a few
 seconds.
 
 Direct reads from the PiJuice battery temperature register (`0x47`) confirmed
@@ -259,18 +381,20 @@ introduced by `battery.py`.
 Example observed readings:
 
 ```text
-40°C
-41°C
-40°C
+43°C
 85°C
-85°C
-40°C
-40°C
 90°C
 85°C
 85°C
-41°C
+43°C
+90°C
+43°C
+85°C
+43°C
+90°C
 ```
+
+Longer diagnostic testing also produced readings such as 76°C and 80°C.
 
 Current battery configuration:
 
@@ -287,8 +411,51 @@ Hot threshold     : 59°C
 
 The cause is still under investigation.
 
+The diagnostic results show abrupt transitions between the lower and higher
+temperature ranges. For example, readings can change from approximately 43°C
+to 80–90°C and back again within only a few seconds. This behaviour is not
+consistent with a real battery physically changing temperature at that rate.
+
+PiJuice Monitor currently flags readings of 60°C or above as:
+
+```text
+ANOMALY
+```
+
+and lower readings as:
+
+```text
+NORMAL
+```
+
+This threshold is a diagnostic flag only. It does **not** mean that every
+reading below 60°C has been proven accurate, or that every reading at or above
+60°C is necessarily false.
+
 For safety, battery temperature is currently treated as monitoring information
 only and is **not used as an automatic shutdown trigger**.
+
+## Project Structure
+
+```text
+pijuice-monitor/
+├── README.md
+├── data/
+├── logs/
+├── src/
+│   ├── battery.py
+│   ├── history_logger.py
+│   ├── low_battery_monitor.py
+│   ├── pijuice_reader.py
+│   └── temperature_diagnostics.py
+├── systemd/
+│   └── pijuice-history.service
+└── tests/
+    └── test_low_battery.py
+```
+
+The `data/` and `logs/` directories contain runtime data and are not intended
+to be committed to Git.
 
 ## Roadmap
 
@@ -301,13 +468,16 @@ only and is **not used as an automatic shutdown trigger**.
 - [x] Low-battery simulation mode
 - [x] PiJuice hardware power-off test
 - [x] Configure persistent wake-up on charge at 40%
+- [x] Shared PiJuice sensor reader
+- [x] Historical data logging
+- [x] Historical logger systemd service
+- [x] Historical logger automatic startup after reboot
 - [ ] Integrate production low-battery safe shutdown
 - [ ] Verify automatic restart after sufficient recharge
 - [ ] Investigate intermittent battery temperature readings
-- [ ] Run monitor automatically as a system service
+- [ ] Run production low-battery monitor automatically as a system service
 - [ ] System / CPU monitoring
 - [ ] Solar power integration
-- [ ] Historical data logging
 - [ ] Web dashboard
 - [ ] Cloud data upload
 - [ ] MQTT
