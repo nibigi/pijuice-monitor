@@ -78,40 +78,40 @@ def build_page():
         <div class="grid">
             <div class="card">
                 <div class="label">Battery</div>
-                <div class="value">{reading["charge"]}%</div>
+		<div class="value" id="battery-charge">{reading["charge"]}%</div>
             </div>
 
             <div class="card">
                 <div class="label">Battery state</div>
-                <div class="value small">
+                <div class="value small"  id="battery-state">
                     {html.escape(str(reading["battery"]))}
                 </div>
             </div>
 
             <div class="card">
                 <div class="label">External power</div>
-                <div class="value small">
+                <div class="value small"  id="external-power">
                     {html.escape(str(reading["power_input"]))}
                 </div>
             </div>
 
             <div class="card">
                 <div class="label">Voltage</div>
-                <div class="value">{reading["voltage"]:.3f} V</div>
+                <div class="value" id="voltage">{reading["voltage"]:.3f} V</div>
             </div>
 
             <div class="card">
                 <div class="label">Temperature</div>
-                <div class="value">{reading["temperature"]}°C</div>
-                <div class="status {temp_class}">
+                <div class="value" id="temperature">{reading["temperature"]}°C</div>
+                <div class="status {temp_class}"  id="temperature-status">
                     {reading["temperature_status"]}
                 </div>
             </div>
 
             <div class="card">
                 <div class="label">Fault</div>
-                <div class="value small">{reading["fault"]}</div>
-                <div class="status {fault_class}">
+                <div class="value small" id="fault-value">{reading["fault"]}</div>
+                <div class="status {fault_class}" id="fault-status">
                     {"FAULT" if reading["fault"] else "OK"}
                 </div>
             </div>
@@ -124,8 +124,6 @@ def build_page():
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
-<meta http-equiv="refresh" content="5">
 
 <title>PiJuice Monitor</title>
 
@@ -304,8 +302,8 @@ footer {
     </section>
 
     <footer>
-        Last updated: __UPDATED__<br>
-        Live page refresh: 5 seconds<br>
+        Last updated: <span id="last-updated">__UPDATED__</span><br>
+        Live status refresh: 5 seconds<br>
         Historical sampling: 60 seconds
     </footer>
 
@@ -457,7 +455,80 @@ async function loadBatteryHistory() {
     }
 }
 
+async function loadStatus() {
+
+    try {
+        const response = await fetch("/api/status");
+
+        if (!response.ok) {
+            throw new Error(
+                "HTTP " + response.status
+            );
+        }
+
+        const status = await response.json();
+
+        document.getElementById(
+            "battery-charge"
+        ).textContent = status.charge + "%";
+
+        document.getElementById(
+            "voltage"
+        ).textContent = status.voltage.toFixed(3) + " V";
+
+        document.getElementById(
+            "temperature"
+        ).textContent = status.temperature + "°C";
+
+        const temperatureStatus =
+            document.getElementById("temperature-status");
+
+        temperatureStatus.textContent =
+            status.temperature_status;
+
+        temperatureStatus.className =
+            "status " +
+            (status.temperature_status === "ANOMALY"
+                ? "warning"
+                : "normal");
+
+        document.getElementById(
+            "battery-state"
+        ).textContent = status.battery;
+
+        document.getElementById(
+            "external-power"
+        ).textContent = status.power_input;
+
+        document.getElementById(
+	    "fault-value"
+	).textContent = status.fault;
+
+	const faultStatus =
+             document.getElementById("fault-status");
+
+        faultStatus.textContent =
+             status.fault ? "FAULT" : "OK";
+
+        faultStatus.className =
+             "status " +
+             (status.fault ? "warning" : "normal");
+
+        document.getElementById(
+             "last-updated"
+        ).textContent = new Date().toLocaleString();
+
+    } catch (error) {
+        console.error(
+            "Unable to load PiJuice status:",
+            error
+        );
+    }
+}
+
 loadBatteryHistory();
+loadStatus();
+setInterval(loadStatus, 5000);
 </script>
 
 </body>
@@ -477,6 +548,39 @@ loadBatteryHistory();
 class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+
+        if self.path == "/api/status":
+
+            try:
+                status = read_snapshot()
+                data = json.dumps(status).encode("utf-8")
+            except RuntimeError as exc:
+                data = json.dumps(
+                    {"error": str(exc)}
+                ).encode("utf-8")
+
+            self.send_response(200)
+
+            self.send_header(
+                "Content-Type",
+                "application/json; charset=utf-8",
+            )
+
+            self.send_header(
+                "Content-Length",
+                str(len(data)),
+            )
+
+            self.send_header(
+                "Cache-Control",
+                "no-store",
+            )
+
+            self.end_headers()
+
+            self.wfile.write(data)
+            return
+
 
         if self.path == "/api/history":
 
