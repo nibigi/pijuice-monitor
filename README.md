@@ -285,10 +285,13 @@ python3 src/web_dashboard.py
 ```
 
 The dashboard listens on port 8080.
+
 On the Raspberry Pi:
 http://localhost:8080
+
 From another device on the same local network:
 http://raspberry-pi-hostname.local:8080
+
 The dashboard currently displays:
 - Battery charge percentage
 - Charging / discharging state
