@@ -38,6 +38,11 @@ Currently developed and tested on:
 - 60-second CSV data collection
 - Historical logger managed by systemd
 - Automatic historical logger startup after reboot
+- Local web dashboard on port 8080
+- Live PiJuice status API (`/api/status`)
+- Historical data API (`/api/history`)
+- Live dashboard status updates every 5 seconds without full-page reload
+- Battery history SVG chart
 
 ## Installation
 
@@ -268,6 +273,54 @@ The current service file was tested with the project installed at:
 The paths in the service file must be adjusted if the project is installed
 under a different user or directory.
 
+## Web Dashboard
+
+PiJuice Monitor includes a lightweight local web dashboard implemented
+using the Python standard library.
+
+Start the dashboard manually:
+
+```bash
+python3 src/web_dashboard.py
+```
+
+The dashboard listens on port 8080.
+On the Raspberry Pi:
+http://localhost:8080
+From another device on the same local network:
+http://<raspberry-pi-hostname>.local:8080
+The dashboard currently displays:
+- Battery charge percentage
+- Charging / discharging state
+- External power status
+- Battery voltage
+- Battery temperature
+- Temperature NORMAL / ANOMALY status
+- PiJuice fault status
+- Battery history chart
+
+### Live status API
+
+Current PiJuice status is available from:
+/api/status
+
+For example:
+curl http://localhost:8080/api/status
+
+The web dashboard fetches this endpoint every 5 seconds and updates the status cards using JavaScript without reloading the entire page.
+
+### Historical data API
+
+Historical records are available from:
+/api/history
+
+For example:
+curl http://localhost:8080/api/history
+
+The API currently returns up to 120 recent records from data/pijuice_history.csv.
+Historical data is collected independently by pijuice-history.service every 60 seconds.
+The web dashboard itself is currently started manually and is not yet managed by systemd.
+
 ## Power Management
 
 ### Hardware power-off
@@ -478,7 +531,14 @@ to be committed to Git.
 - [ ] Run production low-battery monitor automatically as a system service
 - [ ] System / CPU monitoring
 - [ ] Solar power integration
-- [ ] Web dashboard
+- [x] Local web dashboard
+- [x] Battery history chart
+- [x] Historical data API (`/api/history`)
+- [x] Live status API (`/api/status`)
+- [x] Live dashboard updates without full-page reload
+- [ ] Voltage history chart
+- [ ] Temperature history chart
+- [ ] Run web dashboard automatically as a system service
 - [ ] Cloud data upload
 - [ ] MQTT
 - [ ] iPhone integration
