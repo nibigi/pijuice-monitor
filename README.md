@@ -530,18 +530,22 @@ to be committed to Git.
 - [x] Historical logger automatic startup after reboot
 - [ ] Integrate production low-battery safe shutdown
 - [ ] Verify automatic restart after sufficient recharge
+- [ ] Scheduled shutdown + RTC scheduled wake
 - [ ] Investigate intermittent battery temperature readings
 - [ ] Run production low-battery monitor automatically as a system service
 - [ ] System / CPU monitoring
 - [ ] Solar power integration
 - [x] Local web dashboard
 - [x] Battery history chart
+- [x] Voltage history chart
 - [x] Historical data API (`/api/history`)
 - [x] Live status API (`/api/status`)
 - [x] Live dashboard updates without full-page reload
-- [ ] Voltage history chart
+- [ ] Oracle Cloud telemetry upload
+- [ ] Cloud historical data storage
+- [ ] Cloud web dashboard
+- [ ] Device online/offline and last-seen status
 - [ ] Temperature history chart
 - [ ] Run web dashboard automatically as a system service
-- [ ] Cloud data upload
 - [ ] MQTT
 - [ ] iPhone integration

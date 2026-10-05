@@ -15,7 +15,7 @@ PORT = 8080
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 HISTORY_FILE = PROJECT_ROOT / "data" / "pijuice_history.csv"
-HISTORY_LIMIT = 120
+HISTORY_LIMIT = 240
 
 
 def read_history(limit=HISTORY_LIMIT):
@@ -78,7 +78,7 @@ def build_page():
         <div class="grid">
             <div class="card">
                 <div class="label">Battery</div>
-		<div class="value" id="battery-charge">{reading["charge"]}%</div>
+        <div class="value" id="battery-charge">{reading["charge"]}%</div>
             </div>
 
             <div class="card">
@@ -239,6 +239,10 @@ h1 {
     stroke-width: 1;
 }
 
+.chart-label {
+    fill: #6b7280;
+}
+
 .chart-line {
     fill: none;
     stroke: #2563eb;
@@ -301,6 +305,32 @@ footer {
 
     </section>
 
+<section class="history-section">
+
+    <h2>Voltage History</h2>
+
+    <div class="chart-card">
+
+        <svg
+            id="voltage-chart"
+            viewBox="0 0 800 260"
+            role="img"
+            aria-label="Battery voltage history">
+        </svg>
+
+        <div
+            id="voltage-chart-info"
+            class="chart-info">
+            Loading historical data...
+        </div>
+
+    </div>
+
+</section>
+
+
+
+
     <footer>
         Last updated: <span id="last-updated">__UPDATED__</span><br>
         Live status refresh: 5 seconds<br>
@@ -342,7 +372,7 @@ async function loadBatteryHistory() {
         const width = 800;
         const height = 260;
 
-        const left = 50;
+        const left = 70;
         const right = 20;
         const top = 20;
         const bottom = 40;
@@ -409,6 +439,7 @@ async function loadBatteryHistory() {
             grid +=
                 '<text ' +
                 'class="chart-label" ' +
+
                 'x="' +
                     (left - 8) +
                     '" ' +
@@ -451,6 +482,142 @@ async function loadBatteryHistory() {
 
         info.textContent =
             "Unable to load historical data: " +
+            error;
+    }
+}
+
+async function loadVoltageHistory() {
+
+    const info =
+        document.getElementById("voltage-chart-info");
+
+    try {
+        const response = await fetch(
+            "/api/history",
+            {cache: "no-store"}
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "HTTP " + response.status
+            );
+        }
+
+    const history = await response.json();
+
+    const validHistory = history.filter(
+        row => row.battery !== "NOT_PRESENT"
+    );
+
+    const startTime =
+       new Date(validHistory[0].timestamp)
+            .toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+            second: "2-digit"
+            });
+
+    const endTime =
+        new Date(validHistory[validHistory.length - 1].timestamp)
+            .toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+            second: "2-digit"
+            });
+
+    const svg = document.getElementById("voltage-chart");
+
+    const voltages = validHistory.map(
+        row => Number(row.voltage)
+    );
+
+    const minVoltage = Math.min(...voltages);
+    const maxVoltage = Math.max(...voltages);
+    const topLabel = maxVoltage.toFixed(2) + " V";
+    const bottomLabel = minVoltage.toFixed(2) + " V";
+
+    const width = 800;
+    const height = 260;
+    const padding = 30;
+    const leftPadding = 70;
+    const bottomPadding = 50;
+
+    const gridMin = minVoltage;
+    const gridMax = maxVoltage;
+    const gridRange = gridMax - gridMin || 0.001;
+    const gridStep = gridRange / 4;
+
+    let grid = "";
+
+    for (let i = 0; i < 5; i++) {
+
+        const y =
+            padding +
+            i * (height - padding - bottomPadding) / 4;
+
+	const voltage =
+	    gridMax -
+	    i * gridStep;
+
+    grid +=
+        '<line ' +
+        'x1="' + leftPadding + '" ' +
+        'y1="' + y + '" ' +
+        'x2="' + (width - padding) + '" ' +
+        'y2="' + y + '" ' +
+        'class="chart-grid" />' +
+        '<text x="5" y="' + (y + 5) + '" font-size="14" class="chart-label">' +
+        voltage.toFixed(3) + ' V</text>';
+    }
+
+    const points = voltages.map((voltage, index) => {
+
+        const x =
+            leftPadding +
+            index * (width - leftPadding - padding) /
+            Math.max(voltages.length - 1, 1);
+
+        const y =
+            height - bottomPadding -
+            (voltage - gridMin) *
+            (height - padding - bottomPadding) /
+            gridRange;
+
+        return x + "," + y;
+
+    }).join(" ");
+
+    svg.innerHTML =
+            grid +
+            '<text x="' + leftPadding +
+            '" y="' + (height - 5) +
+        '" font-size="12">' +
+        startTime +
+        '</text>' +
+        '<text x="' + (width - padding) +
+        '" y="' + (height - 5) +
+        '" font-size="12" text-anchor="end">' +
+        endTime +
+        '</text>' +
+        '<polyline points="' + points +
+        '" fill="none"' +
+        ' stroke="#2563eb"' +
+        ' stroke-width="3"' +
+        ' stroke-linejoin="round"' +
+        ' stroke-linecap="round" />';
+
+    info.textContent =
+        validHistory.length +
+        " valid voltage samples loaded" +
+        " | " +
+        minVoltage.toFixed(3) +
+        "–" +
+        maxVoltage.toFixed(3) +
+        " V";
+
+    } catch (error) {
+        info.textContent =
+            "Unable to load voltage history: " +
             error;
     }
 }
@@ -501,10 +668,10 @@ async function loadStatus() {
         ).textContent = status.power_input;
 
         document.getElementById(
-	    "fault-value"
-	).textContent = status.fault;
+        "fault-value"
+    ).textContent = status.fault ? "True" : "False";
 
-	const faultStatus =
+    const faultStatus =
              document.getElementById("fault-status");
 
         faultStatus.textContent =
@@ -527,6 +694,7 @@ async function loadStatus() {
 }
 
 loadBatteryHistory();
+loadVoltageHistory();
 loadStatus();
 setInterval(loadStatus, 5000);
 </script>
