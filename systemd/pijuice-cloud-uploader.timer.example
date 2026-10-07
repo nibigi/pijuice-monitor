@@ -1,0 +1,11 @@
+[Unit]
+Description=Upload PiJuice telemetry every 60 seconds
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5
+Unit=pijuice-cloud-uploader.service
+
+[Install]
+WantedBy=timers.target

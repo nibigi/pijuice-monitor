@@ -1,0 +1,11 @@
+[Unit]
+Description=PiJuice Cloud Telemetry Uploader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/<username>/pijuice-monitor
+EnvironmentFile=/home/<username>/pijuice-monitor/.env
+Environment=PYTHONPATH=/home/<username>/pijuice-monitor/src:/home/<username>/PiJuice/Software/Source
+ExecStart=/usr/bin/python3 /home/<username>/pijuice-monitor/src/cloud_uploader.py
