@@ -1,0 +1,14 @@
+[Unit]
+Description=PiJuice Cloud API
+After=network.target
+
+[Service]
+User=clouduser
+WorkingDirectory=/home/clouduser/pijuice-cloud
+EnvironmentFile=/home/clouduser/pijuice-cloud/.env
+ExecStart=/home/clouduser/pijuice-cloud/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
