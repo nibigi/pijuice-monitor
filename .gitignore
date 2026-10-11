@@ -12,3 +12,21 @@ logs/*.csv
 
 # Local backup files
 *.bak
+
+# Additional private/runtime files
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.~[0-9]*~
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519

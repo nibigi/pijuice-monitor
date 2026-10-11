@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>PiJuice Monitor</title>
+<style>
+:root { font-family: system-ui, sans-serif; color: #172033; background: #f3f5f9; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; }
+main { max-width: 1100px; margin: auto; }
+header { display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+h1 { margin: 0; font-size: 26px; }
+.subtitle { color: #64748b; margin: 6px 0 0; }
+button { background: #172033; color: white; border: 0; border-radius: 9px;
+  padding: 11px 18px; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+.card { background: white; border-radius: 16px; padding: 24px;
+  box-shadow: 0 2px 10px #17203308; }
+.card h2 { margin: 0 0 14px; font-size: 15px; color: #64748b; font-weight: 500; }
+.value { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.detail { color: #64748b; font-size: 13px; margin-top: 10px; }
+.wide { grid-column: span 3; }
+#status { color: #64748b; margin-bottom: 18px; }
+@media (max-width: 760px) {
+  body { padding: 16px; }
+  .grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .wide { grid-column: span 2; }
+}
+@media (max-width: 440px) {
+  .grid { grid-template-columns: 1fr; }
+  .wide { grid-column: span 1; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>PiJuice Monitor</h1>
+    <p class="subtitle">Raspberry Pi · Cloud Dashboard</p>
+  </div>
+  <form method="post" action="/logout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Sign out</button>
+  </form>
+</header>
+<p id="status" role="status">Loading telemetry...</p>
+<div class="grid">
+  <section class="card">
+    <h2>Battery</h2>
+    <div class="value" id="battery">--</div>
+    <div class="detail" id="battery-status">--</div>
+  </section>
+  <section class="card">
+    <h2>CPU Usage</h2>
+    <div class="value" id="cpu">--</div>
+    <div class="detail" id="cpu-temp">--</div>
+  </section>
+  <section class="card">
+    <h2>Memory Used</h2>
+    <div class="value" id="memory">--</div>
+    <div class="detail" id="memory-detail">--</div>
+  </section>
+  <section class="card">
+    <h2>Disk Used</h2>
+    <div class="value" id="disk">--</div>
+    <div class="detail" id="disk-detail">--</div>
+  </section>
+  <section class="card">
+    <h2>Power Input</h2>
+    <div class="value" id="power">--</div>
+    <div class="detail" id="voltage">--</div>
+  </section>
+  <section class="card">
+    <h2>Uptime</h2>
+    <div class="value" id="uptime">--</div>
+    <div class="detail" id="device">--</div>
+  </section>
+
+</div>
+<h2 style="margin-top:28px">Power & Battery Details</h2>
+<div class="grid">
+<section class="card">
+  <h2>Battery Voltage</h2>
+  <div class="value" id="battery-voltage">--</div>
+</section>
+<section class="card">
+  <h2>Battery Current</h2>
+  <div class="value" id="battery-current">--</div>
+</section>
+<section class="card">
+  <h2>IO Voltage</h2>
+  <div class="value" id="io-voltage">--</div>
+</section>
+<section class="card">
+  <h2>IO Current</h2>
+  <div class="value" id="io-current">--</div>
+</section>
+<section class="card">
+  <h2>Battery Temperature</h2>
+  <div class="value" id="battery-temperature">--</div>
+</section>
+<section class="card">
+  <h2>CPU Frequency</h2>
+  <div class="value" id="cpu-frequency">--</div>
+</section>
+<section class="card">
+  <h2>5V IO Input</h2>
+  <div class="value" id="io-status">--</div>
+</section>
+<section class="card">
+  <h2>Stored Fault</h2>
+  <div class="value" id="stored-fault">--</div>
+</section>
+</div>
+
+<section class="card" style="margin-top:20px">
+  <h2>Battery History</h2>
+  <label for="history-hours">Time range:</label>
+  <select id="history-hours" style="padding:8px;margin:8px">
+    <option value="1">1 hour</option>
+    <option value="6">6 hours</option>
+    <option value="24">24 hours</option>
+  </select>
+  <p id="history-status" class="detail">Loading history...</p>
+  <svg id="battery-chart" viewBox="0 0 700 220"
+       role="img" aria-label="Battery history chart"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+
+<section class="card" style="margin-top:20px">
+  <h2>CPU Temperature</h2>
+  <svg id="cpu-temperature-chart" viewBox="0 0 700 220"
+       role="img" aria-label="CPU temperature history"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+<section class="card" style="margin-top:20px">
+  <h2>CPU Usage</h2>
+  <svg id="cpu-usage-chart" viewBox="0 0 700 220"
+       role="img" aria-label="CPU usage history"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+<section class="card" style="margin-top:20px">
+  <h2>Memory Usage</h2>
+  <svg id="memory-usage-chart" viewBox="0 0 700 220"
+       role="img" aria-label="Memory usage history"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+
+<!-- Electrical History -->
+
+<section class="card" style="margin-top:20px">
+  <h2>Voltage History</h2>
+  <svg id="voltage-history-chart" viewBox="0 0 700 220"
+       role="img" aria-label="Battery Voltage and IO Voltage history"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+
+<section class="card" style="margin-top:20px">
+  <h2>Battery Current History</h2>
+  <svg id="battery-current-history-chart" viewBox="0 0 700 220"
+       role="img" aria-label="Battery current history including negative values"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+
+<section class="card" style="margin-top:20px">
+  <h2>IO Current History</h2>
+  <svg id="io-current-history-chart" viewBox="0 0 700 220"
+       role="img" aria-label="IO current history"
+       style="width:100%;height:auto;display:block"></svg>
+</section>
+
+</main>
+<script>
+const el = id => document.getElementById(id);
+const fmt = (v, digits=1) =>
+  v == null || !Number.isFinite(Number(v)) ? "--" : Number(v).toFixed(digits);
+const percent = v => fmt(v, 0) + (v == null ? "" : "%");
+async function refresh() {
+  try {
+    const response = await fetch("/dashboard/data", {
+      credentials: "same-origin", cache: "no-store"
+    });
+    if (response.status === 401) {
+      window.location.assign("/login");
+      return;
+    }
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const d = await response.json();
+    const s = d.system || {};
+    el("battery").textContent = percent(d.charge_percent);
+    el("battery-status").textContent = d.battery_status || "--";
+    el("cpu").textContent = percent(s.cpu_usage_percent);
+    el("cpu-temp").textContent = fmt(s.cpu_temperature_c) + " °C";
+    const mt = s.memory_total_mb, ma = s.memory_available_mb;
+    el("memory").textContent = mt != null && ma != null && mt > 0
+      ? percent((mt - ma) / mt * 100) : "--";
+    el("memory-detail").textContent = fmt(mt - ma) + " / " + fmt(mt) + " MB";
+    const dt = s.disk_total_gb, df = s.disk_free_gb;
+    el("disk").textContent = dt != null && df != null && dt > 0
+      ? percent((dt - df) / dt * 100) : "--";
+    el("disk-detail").textContent = fmt(dt - df) + " / " + fmt(dt) + " GB";
+    el("power").textContent = d.power_input || "--";
+    el("voltage").textContent = fmt(d.voltage_v, 3) + " V";
+    el("uptime").textContent = s.uptime_seconds == null ? "--"
+      : fmt(s.uptime_seconds / 3600, 1) + " h";
+    el("device").textContent = d.device_id || "--";
+
+    const ext = d.battery_extended || {};
+    el("battery-voltage").textContent = fmt(d.voltage_v, 3) + " V";
+    el("battery-current").textContent =
+      fmt(ext.battery_current_ma, 0) + " mA";
+    el("io-voltage").textContent =
+      ext.io_voltage_mv == null ? "--" :
+      fmt(ext.io_voltage_mv / 1000, 3) + " V";
+    el("io-current").textContent =
+      fmt(ext.io_current_ma, 0) + " mA";
+    el("battery-temperature").textContent =
+      fmt(d.temperature_c, 1) + " °C";
+    el("cpu-frequency").textContent =
+      fmt(s.cpu_frequency_mhz, 0) + " MHz";
+    el("io-status").textContent = d.io_5v || "--";
+    const fault = ext.fault_status || {};
+    el("stored-fault").textContent =
+      fault.forced_power_off === true ? "Forced Power Off" :
+      fault.forced_power_off === false ? "None" : "--";
+
+    el("status").textContent = "Latest record #" + d.id
+      + " · Refreshed " + new Date().toLocaleTimeString();
+  } catch (err) {
+    el("status").textContent = "Unable to load telemetry: " + err.message;
+  }
+}
+refresh();
+setInterval(refresh, 30000);
+
+
+function drawSystemChart(svgId, records, field, unit, color, fixedMax) {
+  const svg = el(svgId);
+  svg.replaceChildren();
+
+  const valid = records.filter(r =>
+    r[field] !== null &&
+    r[field] !== undefined &&
+    Number.isFinite(Number(r[field])) &&
+    Number.isFinite(Date.parse(r.time))
+  );
+
+  const ns = "http://www.w3.org/2000/svg";
+  const add = (tag, attrs, value) => {
+    const node = document.createElementNS(ns, tag);
+    for (const [key, val] of Object.entries(attrs))
+      node.setAttribute(key, val);
+    if (value !== undefined) node.textContent = value;
+    svg.appendChild(node);
+  };
+
+  if (!valid.length) {
+    add("text", {x:350,y:110,"text-anchor":"middle",
+                 fill:"#64748b","font-size":16},
+        "No historical data available");
+    return;
+  }
+
+  const left = 55, right = 680, top = 15, bottom = 180;
+  const times = valid.map(r => Date.parse(r.time));
+  const start = Math.min(...times);
+  const end = Math.max(...times);
+  const values = valid.map(r => Number(r[field]));
+
+  const maximum = fixedMax ??
+    Math.max(1, Math.ceil(Math.max(...values) * 1.2));
+
+  const x = t => left + (t - start) / (end - start || 1)
+    * (right - left);
+  const y = v => bottom - Math.max(0, Math.min(maximum, v))
+    / maximum * (bottom - top);
+
+  for (let i = 0; i <= 4; i++) {
+    const value = maximum * i / 4;
+    const yy = y(value);
+
+    add("line", {x1:left,y1:yy,x2:right,y2:yy,
+                 stroke:"#e2e8f0","stroke-width":1});
+
+    add("text", {x:45,y:yy+4,"text-anchor":"end",
+                 fill:"#64748b","font-size":12},
+        Number(value.toFixed(1)) + unit);
+  }
+
+  const points = valid.map((r, i) =>
+    x(times[i]).toFixed(1) + "," +
+    y(values[i]).toFixed(1)
+  ).join(" ");
+
+  add("polyline", {
+    points, fill:"none", stroke:color,
+    "stroke-width":3, "stroke-linejoin":"round"
+  });
+
+  for (const t of [start, end]) {
+    add("text", {
+      x:x(t), y:205,
+      "text-anchor":t===start?"start":"end",
+      fill:"#64748b","font-size":12
+    }, new Date(t).toLocaleTimeString([], {
+      hour:"2-digit",minute:"2-digit"
+    }));
+  }
+}
+
+
+function drawElectricalChart(svgId, records, series, unit, includeZero=false) {
+  const svg = el(svgId);
+  svg.replaceChildren();
+  const ns = "http://www.w3.org/2000/svg";
+
+  const add = (tag, attrs, value) => {
+    const node = document.createElementNS(ns, tag);
+    for (const [key, val] of Object.entries(attrs))
+      node.setAttribute(key, val);
+    if (value !== undefined) node.textContent = value;
+    svg.appendChild(node);
+  };
+
+  const validSeries = series.map(item => ({
+    ...item,
+    points: records.filter(r =>
+      r[item.field] != null &&
+      Number.isFinite(Number(r[item.field])) &&
+      Number.isFinite(Date.parse(r.time))
+    ).map(r => ({
+      time: Date.parse(r.time),
+      value: Number(r[item.field])
+    }))
+  }));
+
+  const allPoints = validSeries.flatMap(item => item.points);
+
+  if (!allPoints.length) {
+    add("text", {
+      x:350, y:110, "text-anchor":"middle",
+      fill:"#64748b", "font-size":16
+    }, "No historical data available");
+    return;
+  }
+
+  const left=65, right=680, top=20, bottom=175;
+  const times = allPoints.map(p => p.time);
+  const values = allPoints.map(p => p.value);
+  const start = Math.min(...times);
+  const end = Math.max(...times);
+
+  let minimum = Math.min(...values);
+  let maximum = Math.max(...values);
+
+  if (includeZero) {
+    minimum = Math.min(minimum, 0);
+    maximum = Math.max(maximum, 0);
+  }
+
+  const range = maximum - minimum || Math.max(Math.abs(maximum), 1);
+  const padding = range * 0.1;
+  minimum -= padding;
+  maximum += padding;
+
+  const x = t => left + (t-start)/(end-start || 1)*(right-left);
+  const y = v => bottom - (v-minimum)/(maximum-minimum)*(bottom-top);
+
+  const digits = unit === "V" ? 2 : 0;
+
+  for (let i=0; i<=4; i++) {
+    const value = minimum + (maximum-minimum)*i/4;
+    const yy = y(value);
+
+    add("line", {
+      x1:left, y1:yy, x2:right, y2:yy,
+      stroke:"#e2e8f0", "stroke-width":1
+    });
+
+    add("text", {
+      x:55, y:yy+4, "text-anchor":"end",
+      fill:"#64748b", "font-size":12
+    }, value.toFixed(digits) + " " + unit);
+  }
+
+  if (includeZero && minimum < 0 && maximum > 0) {
+    const zeroY = y(0);
+    add("line", {
+      x1:left, y1:zeroY, x2:right, y2:zeroY,
+      stroke:"#64748b", "stroke-width":1.5,
+      "stroke-dasharray":"5 4"
+    });
+  }
+
+  for (const item of validSeries) {
+    if (!item.points.length) continue;
+
+    const points = item.points.map(p =>
+      x(p.time).toFixed(1) + "," + y(p.value).toFixed(1)
+    ).join(" ");
+
+    add("polyline", {
+      points, fill:"none", stroke:item.color,
+      "stroke-width":2.5, "stroke-linejoin":"round"
+    });
+  }
+
+  for (const t of [start, end]) {
+    add("text", {
+      x:x(t), y:205,
+      "text-anchor":t===start?"start":"end",
+      fill:"#64748b", "font-size":12
+    }, new Date(t).toLocaleTimeString([], {
+      hour:"2-digit", minute:"2-digit"
+    }));
+  }
+
+  validSeries.forEach((item, index) => {
+    add("text", {
+      x:left + index*190, y:12,
+      fill:item.color, "font-size":12
+    }, "● " + item.label);
+  });
+}
+
+async function refreshHistory() {
+  const status = el("history-status");
+  const svg = el("battery-chart");
+  try {
+    const hours = el("history-hours").value;
+    const response = await fetch("/dashboard/history?hours=" + hours, {
+      credentials: "same-origin", cache: "no-store"
+    });
+    if (response.status === 401) {
+      window.location.assign("/login");
+      return;
+    }
+    if (!response.ok) throw new Error("HTTP " + response.status);
+
+    const result = await response.json();
+    const records = result.records.filter(
+      r => r.battery != null && Number.isFinite(Number(r.battery))
+    );
+
+    svg.replaceChildren();
+    if (!records.length) {
+      status.textContent = "No battery history available";
+      return;
+    }
+
+    const ns = "http://www.w3.org/2000/svg";
+    const add = (tag, attrs, text) => {
+      const node = document.createElementNS(ns, tag);
+      for (const [key, value] of Object.entries(attrs))
+        node.setAttribute(key, value);
+      if (text != null) node.textContent = text;
+      svg.appendChild(node);
+    };
+
+    const left = 45, right = 680, top = 15, bottom = 180;
+    const times = records.map(r => Date.parse(r.time));
+    const start = Math.min(...times);
+    const end = Math.max(...times);
+    const x = t => left + (t - start) / (end - start || 1) * (right - left);
+    const y = v => bottom - Math.max(0, Math.min(100, v)) / 100 * (bottom - top);
+
+    for (const value of [0, 25, 50, 75, 100]) {
+      const yy = y(value);
+      add("line", {x1:left,y1:yy,x2:right,y2:yy,
+                   stroke:"#e2e8f0","stroke-width":1});
+      add("text", {x:35,y:yy+4,"text-anchor":"end",
+                   fill:"#64748b","font-size":12}, value + "%");
+    }
+
+    const points = records.map((r, i) =>
+      x(times[i]).toFixed(1) + "," + y(Number(r.battery)).toFixed(1)
+    ).join(" ");
+
+    add("polyline", {points,fill:"none",stroke:"#16a34a",
+                     "stroke-width":3,"stroke-linejoin":"round"});
+
+    for (const t of [start, end]) {
+      add("text", {x:x(t),y:205,
+                   "text-anchor":t===start?"start":"end",
+                   fill:"#64748b","font-size":12},
+          new Date(t).toLocaleTimeString([], {
+            hour:"2-digit",minute:"2-digit"
+          }));
+    }
+
+
+    drawSystemChart(
+      "cpu-temperature-chart", result.records,
+      "cpu_temperature", "°C", "#ea580c", null
+    );
+    drawSystemChart(
+      "cpu-usage-chart", result.records,
+      "cpu_usage", "%", "#2563eb", 100
+    );
+    drawSystemChart(
+      "memory-usage-chart", result.records,
+      "memory_usage", "%", "#7c3aed", 100
+    );
+
+
+    drawElectricalChart(
+      "voltage-history-chart", result.records,
+      [
+        {field:"battery_voltage", label:"Battery", color:"#16a34a"},
+        {field:"io_voltage", label:"IO 5V", color:"#2563eb"}
+      ],
+      "V"
+    );
+
+    drawElectricalChart(
+      "battery-current-history-chart", result.records,
+      [
+        {field:"battery_current", label:"Battery Current", color:"#ea580c"}
+      ],
+      "mA", true
+    );
+
+    drawElectricalChart(
+      "io-current-history-chart", result.records,
+      [
+        {field:"io_current", label:"IO Current", color:"#7c3aed"}
+      ],
+      "mA"
+    );
+
+    status.textContent = result.count + " records · "
+      + hours + "h · Battery " + records.at(-1).battery + "%";
+  } catch (err) {
+    status.textContent = "History unavailable: " + err.message;
+  }
+}
+el("history-hours").addEventListener("change", refreshHistory);
+refreshHistory();
+setInterval(refreshHistory, 60000);
+
+</script>
+</body>
+</html>

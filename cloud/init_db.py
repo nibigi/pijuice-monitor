@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS telemetry (
     voltage REAL,
     temperature REAL,
     temperature_status TEXT,
-    fault INTEGER
+    fault INTEGER,
+    schema_version INTEGER,
+    payload_json TEXT
 )
 """)
 
