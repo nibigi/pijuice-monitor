@@ -342,12 +342,10 @@ See [Cloud deployment](docs/CLOUD_DEPLOYMENT.md) for configuration, dashboard
 credentials, database upgrade checks, dependency gaps and acceptance checks.
 A live HTTPS deployment is not certified by the Windows release checks.
 
-## Documentation and release
+## Documentation
 
 - [PiJuice API inventory](docs/PIJUICE_API.md): 66 observed Get/Set class-method entries.
 - [Cloud deployment](docs/CLOUD_DEPLOYMENT.md): Oracle backend and Pi uploader.
-- [Release workflow](docs/RELEASE_WORKFLOW.md): Oracle -> Windows -> GitHub;
-  the Raspberry Pi pulls later after its local work is protected.
 
 <!-- HARDWARE_PHOTO: Add a reviewed Raspberry Pi + PiJuice hardware photo here; remove credentials, identifying labels and private network details first. -->
 
@@ -532,8 +530,7 @@ pijuice-monitor/
 │       └── pijuice-cloud.service.example
 ├── docs/
 │   ├── PIJUICE_API.md
-│   ├── CLOUD_DEPLOYMENT.md
-│   └── RELEASE_WORKFLOW.md
+│   └── CLOUD_DEPLOYMENT.md
 ├── data/
 ├── logs/
 ├── src/
