@@ -66,3 +66,28 @@ def read_snapshot(pj=None):
         "temperature_status": temperature_status,
         "fault": status["isFault"],
     }
+
+
+def read_extended_battery(pj=None):
+    """Read additional PiJuice measurements without changing v1 telemetry."""
+    if pj is None:
+        pj = PiJuice(1, 0x14)
+
+    methods = {
+        "battery_current_ma": "GetBatteryCurrent",
+        "io_voltage_mv": "GetIoVoltage",
+        "io_current_ma": "GetIoCurrent",
+        "fault_status": "GetFaultStatus",
+    }
+
+    result = {}
+
+    for field, method in methods.items():
+        try:
+            response = getattr(pj.status, method)()
+            result[field] = read_value(response, field)
+        except Exception as exc:
+            result[field] = None
+            result[f"{field}_error"] = str(exc)
+
+    return result
