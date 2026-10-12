@@ -344,7 +344,7 @@ A live HTTPS deployment is not certified by the Windows release checks.
 
 ## Documentation
 
-- [PiJuice API inventory](docs/PIJUICE_API.md): 66 observed Get/Set class-method entries.
+- [PiJuice API Inventory](docs/PIJUICE_API.md): 66 Get/Set entries with return values, official references and earlier test results.
 - [Cloud deployment](docs/CLOUD_DEPLOYMENT.md): Oracle backend and Pi uploader.
 
 <!-- HARDWARE_PHOTO: Add a reviewed Raspberry Pi + PiJuice hardware photo here; remove credentials, identifying labels and private network details first. -->
