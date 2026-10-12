@@ -46,6 +46,13 @@ Currently developed and tested on:
 - Pi telemetry uploader with a systemd timer
 - Token-authenticated FastAPI cloud receiver
 - SQLite cloud telemetry storage
+- Schema v2 extended battery, system and LED telemetry
+- Extended Battery readings: battery current, IO voltage/current and stored fault status
+- System CPU usage, temperature and frequency, RAM, disk and uptime monitoring
+- Read-only PiJuice LED D1/D2 RGB and blink settings
+- Oracle Cloud dashboard with battery, system and LED status
+- Cloud history charts with 1-hour, 6-hour and 24-hour views
+- Device online/offline and last-seen display based on telemetry age
 
 ## Installation
 
@@ -334,13 +341,89 @@ The web dashboard itself is currently started manually and is not yet managed by
 ## Cloud Telemetry
 
 The Oracle Cloud backend includes token-authenticated telemetry ingestion,
-latest/history read APIs, SQLite storage, and a password-protected HTTPS
-browser dashboard with history charts. The Pi uploader currently sends basic
-battery snapshots; extended system metrics need a compatible future uploader.
+latest/history read APIs, SQLite storage, and a password-protected browser
+dashboard at `/dashboard`.
 
-See [Cloud deployment](docs/CLOUD_DEPLOYMENT.md) for configuration, dashboard
-credentials, database upgrade checks, dependency gaps and acceptance checks.
-A live HTTPS deployment is not certified by the Windows release checks.
+The Pi uploader sends Schema v2 telemetry. Basic battery fields are retained,
+with additional readings under `payload_json.battery_extended`,
+`payload_json.system` and `payload_json.leds`.
+
+### Dashboard screenshot
+
+![PiJuice Cloud dashboard showing LED status, battery and system metrics, and history charts](docs/images/cloud-dashboard.png)
+
+Example dashboard snapshot. Readings and device status reflect the capture
+time; the stored fault card shows a historical record, not necessarily an
+active fault.
+
+### Extended Battery
+
+The cloud dashboard displays battery voltage, current and temperature, IO
+voltage/current, 5V IO status and a stored fault indicator. The extended reader
+uses `GetBatteryCurrent`, `GetIoVoltage`, `GetIoCurrent` and `GetFaultStatus`.
+Battery current history supports negative values.
+
+The stored fault indicator reports the recorded `forced_power_off` flag. A
+recorded fault does not necessarily indicate an active fault. Battery
+temperature remains subject to the anomaly described under Known Issues.
+
+### System monitoring
+
+The system reader collects CPU usage, temperature, frequency and core count,
+total/available RAM, total/free disk space and uptime from Raspberry Pi Linux.
+The cloud dashboard displays CPU usage/temperature/frequency, RAM and disk
+usage, and uptime. Core count is collected but is not displayed as a card.
+
+These metrics are part of cloud telemetry; the local dashboard and its
+`/api/status` endpoint continue to provide basic PiJuice status.
+
+### PiJuice LED D1/D2
+
+The cloud dashboard displays D1 and D2 RGB values with a colour indicator,
+blink count, RGB1/RGB2 and Period1/Period2. The reader uses `GetLedState` and
+`GetLedBlink` without changing the LEDs. The display represents reported LED
+settings rather than an animation of the physical blink cycle. Missing or
+invalid values are shown as unknown or unavailable.
+
+### Cloud status and history
+
+The dashboard refreshes status every 30 seconds and history every 60 seconds.
+Device online/offline and last-seen labels use the latest telemetry receipt
+time. Older values are marked as historical when the device is offline;
+cloud connection errors leave device status unverified.
+
+History offers 1-hour, 6-hour and 24-hour views for:
+
+- Battery charge
+- CPU temperature and usage
+- RAM usage
+- Battery and IO voltage
+- Battery current
+- IO current
+
+The session-authenticated dashboard reads `/dashboard/data` and
+`/dashboard/history?hours=1` (also accepting `6` or `24`). Dashboard history
+returns up to 2,000 records in chronological order within the selected window.
+Older records without extended metrics cannot supply those chart values.
+
+The token-authenticated telemetry API provides:
+
+- `POST /api/telemetry`: store a telemetry snapshot
+- `GET /api/telemetry/latest`: retrieve the latest snapshot
+- `GET /api/telemetry/history?limit=100`: retrieve recent snapshots
+
+Telemetry history accepts limits from 1 to 1,000 and returns the selected
+records in chronological order. Cloud history is stored in SQLite; local
+history remains the separate CSV-based `/api/history` described above.
+
+### Feature status
+
+The readers, Schema v2 uploader, cloud APIs and dashboard displays above are
+implemented in the current source. Their availability depends on incoming Pi
+telemetry; a dashboard refresh is not a new hardware measurement. Live Cloud
+availability and end-to-end hardware behaviour require runtime verification.
+Production low-battery shutdown, recharge-triggered restart and solar power
+integration remain Roadmap items.
 
 ## Documentation
 
@@ -368,8 +451,6 @@ A controlled hardware test has been successfully completed:
 SetPowerOff(60)
         |
      sudo halt
-        |
-SSH disconnected after approximately 5 seconds
         |
 Raspberry Pi power LED turned off
         |
@@ -524,6 +605,9 @@ pijuice-monitor/
 ├── cloud/
 │   ├── .env.example
 │   ├── app.py
+│   ├── dashboard_routes.py
+│   ├── templates/
+│   │   └── dashboard.html
 │   ├── init_db.py
 │   ├── requirements.txt
 │   └── systemd/
@@ -537,8 +621,10 @@ pijuice-monitor/
 │   ├── battery.py
 │   ├── cloud_uploader.py
 │   ├── history_logger.py
+│   ├── led_reader.py
 │   ├── low_battery_monitor.py
 │   ├── pijuice_reader.py
+│   ├── system_reader.py
 │   ├── temperature_diagnostics.py
 │   └── web_dashboard.py
 ├── systemd/
@@ -572,7 +658,9 @@ to be committed to Git.
 - [ ] Scheduled shutdown + RTC scheduled wake
 - [ ] Investigate intermittent battery temperature readings
 - [ ] Run production low-battery monitor automatically as a system service
-- [ ] System / CPU monitoring
+- [x] System CPU / RAM / disk / uptime telemetry and cloud display
+- [x] Extended Battery telemetry and cloud display
+- [x] Read-only LED D1/D2 telemetry and cloud display
 - [ ] Solar power integration
 - [x] Local web dashboard
 - [x] Battery history chart
@@ -584,8 +672,11 @@ to be committed to Git.
 - [ ] Verify end-to-end Oracle Cloud HTTPS deployment
 - [x] SQLite cloud telemetry storage
 - [x] Password-protected cloud web dashboard and history charts
-- [ ] Device online/offline and last-seen status
-- [ ] Temperature history chart
-- [ ] Run web dashboard automatically as a system service
+- [x] Device online/offline and last-seen status based on telemetry age
+- [x] Cloud CPU temperature, CPU usage and RAM history charts
+- [x] Cloud battery / IO voltage and current history charts
+- [x] Cloud history time ranges (1 / 6 / 24 hours)
+- [ ] Battery temperature history chart
+- [ ] Run local web dashboard automatically as a system service
 - [ ] MQTT
 - [ ] iPhone integration
