@@ -121,6 +121,7 @@ def dashboard_data(request: Request):
     payload = json.loads(data.get("payload_json") or "{}")
     system = payload.get("system") or {}
     battery_extended = payload.get("battery_extended") or {}
+    leds = payload.get("leds") or {}
 
     return {
         "id": data["id"],
@@ -146,6 +147,7 @@ def dashboard_data(request: Request):
             "disk_free_gb": system.get("disk_free_gb"),
             "uptime_seconds": system.get("uptime_seconds"),
         },
+        "leds": leds,
         "battery_extended": {
             "battery_current_ma": battery_extended.get("battery_current_ma"),
             "io_voltage_mv": battery_extended.get("io_voltage_mv"),

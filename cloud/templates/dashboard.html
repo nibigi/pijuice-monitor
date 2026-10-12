@@ -33,6 +33,63 @@ button { background: #172033; color: white; border: 0; border-radius: 9px;
   .grid { grid-template-columns: 1fr; }
   .wide { grid-column: span 1; }
 }
+
+/* PiJuice LED read-only display */
+.led-card { margin: 18px 0; }
+.led-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.led-panel {
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 18px;
+}
+.led-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.led-heading h3 { margin: 0; font-size: 18px; }
+.led-dot {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: #94a3b8;
+  border: 2px solid #cbd5e1;
+  box-shadow: 0 0 0 3px #e2e8f0;
+}
+.led-rgb {
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 16px;
+}
+.led-details { margin: 0; }
+.led-details > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid #e2e8f0;
+}
+.led-details dt { color: #64748b; }
+.led-details dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .led-grid { grid-template-columns: 1fr; }
+}
+
 </style>
 </head>
 <body>
@@ -47,7 +104,44 @@ button { background: #172033; color: white; border: 0; border-radius: 9px;
     <button type="submit">Sign out</button>
   </form>
 </header>
+<p id="device-status" role="status">Device: Checking...</p>
 <p id="status" role="status">Loading telemetry...</p>
+
+<section class="card led-card" aria-labelledby="led-heading">
+  <h2 id="led-heading">PiJuice LED Status · Read-only</h2>
+  <div class="led-grid">
+    <article class="led-panel">
+      <div class="led-heading">
+        <span id="led-d1-dot" class="led-dot" aria-hidden="true"></span>
+        <h3>D1</h3>
+      </div>
+      <div id="led-d1" class="led-rgb">RGB: Unknown</div>
+      <dl class="led-details">
+        <div><dt>Blink count</dt><dd id="led-d1-count">--</dd></div>
+        <div><dt>RGB1</dt><dd id="led-d1-rgb1">--</dd></div>
+        <div><dt>Period1</dt><dd id="led-d1-period1">--</dd></div>
+        <div><dt>RGB2</dt><dd id="led-d1-rgb2">--</dd></div>
+        <div><dt>Period2</dt><dd id="led-d1-period2">--</dd></div>
+      </dl>
+    </article>
+    <article class="led-panel">
+      <div class="led-heading">
+        <span id="led-d2-dot" class="led-dot" aria-hidden="true"></span>
+        <h3>D2</h3>
+      </div>
+      <div id="led-d2" class="led-rgb">RGB: Unknown</div>
+      <dl class="led-details">
+        <div><dt>Blink count</dt><dd id="led-d2-count">--</dd></div>
+        <div><dt>RGB1</dt><dd id="led-d2-rgb1">--</dd></div>
+        <div><dt>Period1</dt><dd id="led-d2-period1">--</dd></div>
+        <div><dt>RGB2</dt><dd id="led-d2-rgb2">--</dd></div>
+        <div><dt>Period2</dt><dd id="led-d2-period2">--</dd></div>
+      </dl>
+    </article>
+  </div>
+  <p class="detail">Last reported LED configuration, not a live physical LED observation.</p>
+</section>
+
 <div class="grid">
   <section class="card">
     <h2>Battery</h2>
@@ -112,8 +206,11 @@ button { background: #172033; color: white; border: 0; border-radius: 9px;
   <div class="value" id="io-status">--</div>
 </section>
 <section class="card">
-  <h2>Stored Fault</h2>
+  <h2>Stored Fault · Historical</h2>
   <div class="value" id="stored-fault">--</div>
+  <p class="detail">
+    Recorded by PiJuice. Not necessarily an active fault.
+  </p>
 </section>
 </div>
 
@@ -179,6 +276,36 @@ const el = id => document.getElementById(id);
 const fmt = (v, digits=1) =>
   v == null || !Number.isFinite(Number(v)) ? "--" : Number(v).toFixed(digits);
 const percent = v => fmt(v, 0) + (v == null ? "" : "%");
+const OFFLINE_AFTER_SECONDS = 150;
+let lastReceivedAt = null;
+let cloudConnectionError = false;
+
+function updateDeviceStatus() {
+  const target = el("device-status");
+
+  if (cloudConnectionError) {
+    target.textContent = "Cloud connection error · Device status unverified";
+    return;
+  }
+
+  if (!lastReceivedAt) {
+    target.textContent = "Device: Unknown · No valid telemetry timestamp";
+    return;
+  }
+
+  const age = (Date.now() - lastReceivedAt) / 1000;
+
+  if (!Number.isFinite(age) || age < -30) {
+    target.textContent = "Device: Unknown · Invalid telemetry time";
+  } else if (age <= OFFLINE_AFTER_SECONDS) {
+    target.textContent = "Device: Online · Last seen " +
+      Math.max(0, Math.floor(age)) + " seconds ago";
+  } else {
+    target.textContent = "Device: Offline · Last seen " +
+      Math.floor(age) + " seconds ago · Values below are historical";
+  }
+}
+
 async function refresh() {
   try {
     const response = await fetch("/dashboard/data", {
@@ -190,6 +317,12 @@ async function refresh() {
     }
     if (!response.ok) throw new Error("HTTP " + response.status);
     const d = await response.json();
+    cloudConnectionError = false;
+    const received = typeof d.received_at === "string"
+      ? d.received_at : "";
+    const parsed = Date.parse(received);
+    lastReceivedAt = received && Number.isFinite(parsed) ? parsed : null;
+    updateDeviceStatus();
     const s = d.system || {};
     el("battery").textContent = percent(d.charge_percent);
     el("battery-status").textContent = d.battery_status || "--";
@@ -208,6 +341,46 @@ async function refresh() {
     el("uptime").textContent = s.uptime_seconds == null ? "--"
       : fmt(s.uptime_seconds / 3600, 1) + " h";
     el("device").textContent = d.device_id || "--";
+
+    const leds = d.leds || {};
+    for (const led of ["D1", "D2"]) {
+      const entry = leds[led] || {};
+      const key = led.toLowerCase();
+      const rgb = entry.state;
+      const validRgb = value =>
+        Array.isArray(value) && value.length === 3 &&
+        value.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
+
+      const valid = validRgb(rgb);
+      const dot = el("led-" + key + "-dot");
+      dot.style.backgroundColor = valid
+        ? `rgb(${rgb.join(",")})` : "#94a3b8";
+
+      el("led-" + key).textContent = valid
+        ? "RGB: " + rgb.join(", ")
+        : "RGB: Unknown";
+
+      const blink = entry.blink;
+      const available = blink && typeof blink === "object" &&
+        !Array.isArray(blink);
+
+      const fields = {
+        count: available && Number.isInteger(blink.count)
+          ? String(blink.count) : "--",
+        rgb1: available && validRgb(blink.rgb1)
+          ? blink.rgb1.join(", ") : "--",
+        period1: available && Number.isInteger(blink.period1) &&
+          blink.period1 >= 0 ? blink.period1 + " ms" : "--",
+        rgb2: available && validRgb(blink.rgb2)
+          ? blink.rgb2.join(", ") : "--",
+        period2: available && Number.isInteger(blink.period2) &&
+          blink.period2 >= 0 ? blink.period2 + " ms" : "--"
+      };
+
+      for (const [field, value] of Object.entries(fields)) {
+        el("led-" + key + "-" + field).textContent = value;
+      }
+    }
 
     const ext = d.battery_extended || {};
     el("battery-voltage").textContent = fmt(d.voltage_v, 3) + " V";
@@ -231,11 +404,14 @@ async function refresh() {
     el("status").textContent = "Latest record #" + d.id
       + " · Refreshed " + new Date().toLocaleTimeString();
   } catch (err) {
+    cloudConnectionError = true;
+    updateDeviceStatus();
     el("status").textContent = "Unable to load telemetry: " + err.message;
   }
 }
 refresh();
 setInterval(refresh, 30000);
+setInterval(updateDeviceStatus, 1000);
 
 
 function drawSystemChart(svgId, records, field, unit, color, fixedMax) {
