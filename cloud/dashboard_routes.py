@@ -162,8 +162,8 @@ def dashboard_history(request: Request, hours: int = 1):
     if not request.session.get("authenticated"):
         raise HTTPException(status_code=401, detail="Login required")
 
-    if hours not in (1, 6, 24):
-        raise HTTPException(status_code=422, detail="hours must be 1, 6 or 24")
+    if hours not in (1, 6, 24, 48, 168):
+        raise HTTPException(status_code=422, detail="hours must be 1, 6, 24, 48 or 168")
 
     with sqlite3.connect("pijuice.db") as conn:
         conn.row_factory = sqlite3.Row
@@ -172,8 +172,8 @@ def dashboard_history(request: Request, hours: int = 1):
             SELECT received_at, charge, voltage, payload_json
             FROM telemetry
             WHERE received_at >= datetime('now', ?)
+              AND received_at <= datetime('now')
             ORDER BY received_at ASC
-            LIMIT 2000
             """,
             (f"-{hours} hours",),
         ).fetchall()

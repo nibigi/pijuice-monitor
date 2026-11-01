@@ -221,6 +221,8 @@ button { background: #172033; color: white; border: 0; border-radius: 9px;
     <option value="1">1 hour</option>
     <option value="6">6 hours</option>
     <option value="24">24 hours</option>
+    <option value="48">48 hours</option>
+    <option value="168" selected>7 days</option>
   </select>
   <p id="history-status" class="detail">Loading history...</p>
   <svg id="battery-chart" viewBox="0 0 700 220"
@@ -418,11 +420,11 @@ function drawSystemChart(svgId, records, field, unit, color, fixedMax) {
   const svg = el(svgId);
   svg.replaceChildren();
 
-  const valid = records.filter(r =>
-    r[field] !== null &&
-    r[field] !== undefined &&
-    Number.isFinite(Number(r[field])) &&
-    Number.isFinite(Date.parse(r.time))
+  const hours = Number(el("history-hours").value);
+  const {start, end} = historyWindow(hours);
+  const segments = historySegments(records, field, start, end);
+  const values = segments.flatMap(segment =>
+    segment.map(point => point.value)
   );
 
   const ns = "http://www.w3.org/2000/svg";
@@ -434,7 +436,7 @@ function drawSystemChart(svgId, records, field, unit, color, fixedMax) {
     svg.appendChild(node);
   };
 
-  if (!valid.length) {
+  if (!values.length) {
     add("text", {x:350,y:110,"text-anchor":"middle",
                  fill:"#64748b","font-size":16},
         "No historical data available");
@@ -442,10 +444,7 @@ function drawSystemChart(svgId, records, field, unit, color, fixedMax) {
   }
 
   const left = 55, right = 680, top = 15, bottom = 180;
-  const times = valid.map(r => Date.parse(r.time));
-  const start = Math.min(...times);
-  const end = Math.max(...times);
-  const values = valid.map(r => Number(r[field]));
+
 
   const maximum = fixedMax ??
     Math.max(1, Math.ceil(Math.max(...values) * 1.2));
@@ -467,24 +466,33 @@ function drawSystemChart(svgId, records, field, unit, color, fixedMax) {
         Number(value.toFixed(1)) + unit);
   }
 
-  const points = valid.map((r, i) =>
-    x(times[i]).toFixed(1) + "," +
-    y(values[i]).toFixed(1)
-  ).join(" ");
+  for (const segment of segments) {
+    if (segment.length >= 2) {
+      const points = segment.map(p =>
+        x(p.time).toFixed(1) + "," +
+        y(p.value).toFixed(1)
+      ).join(" ");
 
-  add("polyline", {
-    points, fill:"none", stroke:color,
-    "stroke-width":3, "stroke-linejoin":"round"
-  });
+      add("polyline", {
+        points, fill:"none", stroke:color,
+        "stroke-width":3, "stroke-linejoin":"round"
+      });
+    } else {
+      add("circle", {
+        cx:x(segment[0].time),
+        cy:y(segment[0].value),
+        r:2,
+        fill:color
+      });
+    }
+  }
 
   for (const t of [start, end]) {
     add("text", {
       x:x(t), y:205,
       "text-anchor":t===start?"start":"end",
       fill:"#64748b","font-size":12
-    }, new Date(t).toLocaleTimeString([], {
-      hour:"2-digit",minute:"2-digit"
-    }));
+    }, historyTimeLabel(t, hours));
   }
 }
 
@@ -502,19 +510,17 @@ function drawElectricalChart(svgId, records, series, unit, includeZero=false) {
     svg.appendChild(node);
   };
 
+  const hours = Number(el("history-hours").value);
+  const {start, end} = historyWindow(hours);
+
   const validSeries = series.map(item => ({
     ...item,
-    points: records.filter(r =>
-      r[item.field] != null &&
-      Number.isFinite(Number(r[item.field])) &&
-      Number.isFinite(Date.parse(r.time))
-    ).map(r => ({
-      time: Date.parse(r.time),
-      value: Number(r[item.field])
-    }))
+    segments: historySegments(records, item.field, start, end)
   }));
 
-  const allPoints = validSeries.flatMap(item => item.points);
+  const allPoints = validSeries.flatMap(item =>
+    item.segments.flatMap(segment => segment)
+  );
 
   if (!allPoints.length) {
     add("text", {
@@ -525,10 +531,7 @@ function drawElectricalChart(svgId, records, series, unit, includeZero=false) {
   }
 
   const left=65, right=680, top=20, bottom=175;
-  const times = allPoints.map(p => p.time);
   const values = allPoints.map(p => p.value);
-  const start = Math.min(...times);
-  const end = Math.max(...times);
 
   let minimum = Math.min(...values);
   let maximum = Math.max(...values);
@@ -573,16 +576,26 @@ function drawElectricalChart(svgId, records, series, unit, includeZero=false) {
   }
 
   for (const item of validSeries) {
-    if (!item.points.length) continue;
+    for (const segment of item.segments) {
+      if (segment.length >= 2) {
+        const points = segment.map(p =>
+          x(p.time).toFixed(1) + "," +
+          y(p.value).toFixed(1)
+        ).join(" ");
 
-    const points = item.points.map(p =>
-      x(p.time).toFixed(1) + "," + y(p.value).toFixed(1)
-    ).join(" ");
-
-    add("polyline", {
-      points, fill:"none", stroke:item.color,
-      "stroke-width":2.5, "stroke-linejoin":"round"
-    });
+        add("polyline", {
+          points, fill:"none", stroke:item.color,
+          "stroke-width":2.5, "stroke-linejoin":"round"
+        });
+      } else {
+        add("circle", {
+          cx:x(segment[0].time),
+          cy:y(segment[0].value),
+          r:2,
+          fill:item.color
+        });
+      }
+    }
   }
 
   for (const t of [start, end]) {
@@ -590,9 +603,7 @@ function drawElectricalChart(svgId, records, series, unit, includeZero=false) {
       x:x(t), y:205,
       "text-anchor":t===start?"start":"end",
       fill:"#64748b", "font-size":12
-    }, new Date(t).toLocaleTimeString([], {
-      hour:"2-digit", minute:"2-digit"
-    }));
+    }, historyTimeLabel(t, hours));
   }
 
   validSeries.forEach((item, index) => {
@@ -601,6 +612,71 @@ function drawElectricalChart(svgId, records, series, unit, includeZero=false) {
       fill:item.color, "font-size":12
     }, "● " + item.label);
   });
+}
+
+
+// Dashboard V0.2 — shared history timeline
+const HISTORY_GAP_MS = 3 * 60 * 1000;
+
+function historyWindow(hours) {
+  const end = Date.now();
+  const start = end - Number(hours) * 3600000;
+  return {start, end};
+}
+
+function historySegments(records, field, start, end) {
+  const ordered = records
+    .map(r => ({
+      time: Date.parse(r.time),
+      raw: r[field]
+    }))
+    .filter(p =>
+      Number.isFinite(p.time) &&
+      p.time >= start &&
+      p.time <= end
+    )
+    .sort((a, b) => a.time - b.time);
+
+  const segments = [];
+  let current = [];
+  let previousTime = null;
+
+  for (const point of ordered) {
+    const missing = point.raw === null ||
+                    point.raw === undefined ||
+                    point.raw === "" ||
+                    !Number.isFinite(Number(point.raw));
+
+    if (missing) {
+      if (current.length) segments.push(current);
+      current = [];
+      previousTime = null;
+      continue;
+    }
+
+    if (previousTime !== null &&
+        point.time - previousTime > HISTORY_GAP_MS) {
+      if (current.length) segments.push(current);
+      current = [];
+    }
+
+    current.push({
+      time: point.time,
+      value: Number(point.raw)
+    });
+
+    previousTime = point.time;
+  }
+
+  if (current.length) segments.push(current);
+  return segments;
+}
+
+function historyTimeLabel(timestamp, hours) {
+  const date = new Date(timestamp);
+  return Number(hours) >= 48
+    ? date.toLocaleDateString([], {day:"2-digit", month:"short"})
+    : date.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 }
 
 async function refreshHistory() {
@@ -618,15 +694,16 @@ async function refreshHistory() {
     if (!response.ok) throw new Error("HTTP " + response.status);
 
     const result = await response.json();
-    const records = result.records.filter(
-      r => r.battery != null && Number.isFinite(Number(r.battery))
+    const {start, end} = historyWindow(hours);
+
+    const batterySegments = historySegments(
+      result.records, "battery", start, end
     );
 
+    const batteryPoints = batterySegments
+      .flatMap(segment => segment);
+
     svg.replaceChildren();
-    if (!records.length) {
-      status.textContent = "No battery history available";
-      return;
-    }
 
     const ns = "http://www.w3.org/2000/svg";
     const add = (tag, attrs, text) => {
@@ -638,9 +715,6 @@ async function refreshHistory() {
     };
 
     const left = 45, right = 680, top = 15, bottom = 180;
-    const times = records.map(r => Date.parse(r.time));
-    const start = Math.min(...times);
-    const end = Math.max(...times);
     const x = t => left + (t - start) / (end - start || 1) * (right - left);
     const y = v => bottom - Math.max(0, Math.min(100, v)) / 100 * (bottom - top);
 
@@ -652,22 +726,40 @@ async function refreshHistory() {
                    fill:"#64748b","font-size":12}, value + "%");
     }
 
-    const points = records.map((r, i) =>
-      x(times[i]).toFixed(1) + "," + y(Number(r.battery)).toFixed(1)
-    ).join(" ");
+    const segments = batterySegments;
 
-    add("polyline", {points,fill:"none",stroke:"#16a34a",
-                     "stroke-width":3,"stroke-linejoin":"round"});
+    for (const segment of segments) {
+      const points = segment.map(p =>
+        x(p.time).toFixed(1) + "," + y(p.value).toFixed(1)
+      ).join(" ");
+
+      if (segment.length >= 2) {
+        add("polyline", {
+          points, fill:"none", stroke:"#16a34a",
+          "stroke-width":3, "stroke-linejoin":"round"
+        });
+      } else {
+        add("circle", {
+          cx:x(segment[0].time), cy:y(segment[0].value),
+          r:2, fill:"#16a34a"
+        });
+      }
+    }
 
     for (const t of [start, end]) {
       add("text", {x:x(t),y:205,
                    "text-anchor":t===start?"start":"end",
                    fill:"#64748b","font-size":12},
-          new Date(t).toLocaleTimeString([], {
-            hour:"2-digit",minute:"2-digit"
-          }));
+          historyTimeLabel(t, hours));
     }
 
+
+    if (!batteryPoints.length) {
+      add("text", {
+        x:350, y:110, "text-anchor":"middle",
+        fill:"#64748b", "font-size":16
+      }, "No battery history available");
+    }
 
     drawSystemChart(
       "cpu-temperature-chart", result.records,
@@ -709,7 +801,10 @@ async function refreshHistory() {
     );
 
     status.textContent = result.count + " records · "
-      + hours + "h · Battery " + records.at(-1).battery + "%";
+      + hours + "h · Battery " +
+    (batteryPoints.length
+      ? batteryPoints.at(-1).value + "%"
+      : "N/A");
   } catch (err) {
     status.textContent = "History unavailable: " + err.message;
   }
