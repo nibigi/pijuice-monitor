@@ -51,7 +51,7 @@ Currently developed and tested on:
 - System CPU usage, temperature and frequency, RAM, disk and uptime monitoring
 - Read-only PiJuice LED D1/D2 RGB and blink settings
 - Oracle Cloud dashboard with battery, system and LED status
-- Cloud history charts with 1-hour, 6-hour and 24-hour views
+- Cloud history charts with 1 / 6 / 24 / 48 / 168-hour views and offline gaps
 - Device online/offline and last-seen display based on telemetry age
 
 ## Installation
@@ -392,7 +392,7 @@ Device online/offline and last-seen labels use the latest telemetry receipt
 time. Older values are marked as historical when the device is offline;
 cloud connection errors leave device status unverified.
 
-History offers 1-hour, 6-hour and 24-hour views for:
+History offers 1-hour, 6-hour, 24-hour, 48-hour and 7-day views for:
 
 - Battery charge
 - CPU temperature and usage
@@ -402,8 +402,13 @@ History offers 1-hour, 6-hour and 24-hour views for:
 - IO current
 
 The session-authenticated dashboard reads `/dashboard/data` and
-`/dashboard/history?hours=1` (also accepting `6` or `24`). Dashboard history
-returns up to 2,000 records in chronological order within the selected window.
+`/dashboard/history?hours=1` (also accepting `6`, `24`, `48` or `168`).
+Dashboard history returns records in chronological order within the selected
+window, without the former SQL `LIMIT 2000`. It excludes records later than
+SQLite `datetime('now')`. This does not remove the separate token API limit.
+Chart lines break when consecutive readings are more than three minutes apart;
+missing readings are not interpolated or recovered. The axis spans the selected
+window, including periods without telemetry.
 Older records without extended metrics cannot supply those chart values.
 
 The token-authenticated telemetry API provides:
@@ -420,10 +425,98 @@ history remains the separate CSV-based `/api/history` described above.
 
 The readers, Schema v2 uploader, cloud APIs and dashboard displays above are
 implemented in the current source. Their availability depends on incoming Pi
-telemetry; a dashboard refresh is not a new hardware measurement. Live Cloud
-availability and end-to-end hardware behaviour require runtime verification.
+telemetry; a dashboard refresh is not a new hardware measurement. V0.2
+Production deployment is recorded below; current live Cloud availability and
+end-to-end hardware behaviour still require runtime verification.
 Production low-battery shutdown, recharge-triggered restart and solar power
 integration remain Roadmap items.
+
+## Dashboard V0.2 status (2026-11-01)
+
+| Status | Evidence and scope |
+|---|---|
+| Deployment recorded | Oracle Production V0.2 deployment was reported complete. Current live availability has not been rechecked for this documentation update. |
+| Implemented in source | 48-hour and 7-day charts, offline gaps, and `/dashboard/history` accepting 1 / 6 / 24 / 48 / 168 hours, with the SQL 2,000-row cap removed and future timestamps excluded. |
+| Pending verification | A fresh installation and current Production HTTPS, login, upload, seven-day API and browser regression checks. |
+| Planned | V0.3 offline buffering and historical backfill; MQTT requires separate evaluation. |
+
+The removed row cap applies only to session-authenticated `/dashboard/history`.
+`/api/telemetry/history` retains its 1–1,000-row limit. Monitor seven-day query
+performance and database growth. Offline gaps indicate missing received data;
+the chart alone cannot distinguish network, Pi power or service failures.
+
+## Architecture and installation from scratch
+
+```text
+PiJuice HAT -> Raspberry Pi readers -> uploader / systemd timer
+                                      | HTTPS + X-API-Token
+                                      v
+<HTTPS_HOST> -> TLS reverse proxy -> FastAPI (127.0.0.1:8000) -> SQLite
+                                      ^
+                           Browser /dashboard + session cookie
+```
+
+The local CSV logger and port 8080 dashboard are separate components. Cloud
+`received_at` records server receipt time, not the original measurement time.
+History does not establish continuous measurement during an outage. Verify
+DNS, proxy software, TLS renewal and firewall settings for each deployment.
+
+1. On the Pi, follow the Installation section above to enable I2C, install the PiJuice
+   library, clone the repository and test hardware communication.
+2. On a Linux VM, install Git, Python 3, venv/pip and systemd. Clone the
+   repository and run these commands from `cloud/`:
+
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r requirements.txt
+   .venv/bin/python -m pip install jinja2 python-multipart itsdangerous
+   .venv/bin/python -m pip check
+   .venv/bin/python init_db.py
+   cp .env.example .env
+   chmod 600 .env
+   ```
+
+   The three additional dashboard dependencies are not pinned in requirements;
+   record tested versions before a reproducible deployment. `init_db.py`
+   initializes a new database; it does not migrate an existing schema. Take a
+   consistent backup and inspect the schema before upgrading an existing database.
+3. Configure these settings only in the protected `.env`. Replace every placeholder
+   before Production use:
+
+   ```dotenv
+   PIJUICE_API_TOKEN=<STRONG_RANDOM_API_TOKEN>
+   DASHBOARD_SESSION_SECRET=<INDEPENDENT_RANDOM_SECRET_AT_LEAST_32_CHARACTERS>
+   DASHBOARD_PASSWORD_HASH=<GENERATED_PBKDF2_SHA256_HASH>
+   ```
+
+   The hash format is `pbkdf2_sha256$iterations$salt_hex$digest_hex`. Use the
+   interactive method in [Cloud deployment](docs/CLOUD_DEPLOYMENT.md) without
+   recording a plaintext password. Preserve literal `$` characters in systemd
+   EnvironmentFile values; use appropriate quoting when loading them in a shell.
+4. Copy `cloud/systemd/pijuice-cloud.service.example` and locally configure
+   `<SERVICE_USER>`, `<CLOUD_DIR>`, EnvironmentFile and virtual-environment paths.
+   Install the service, reload systemd and start it. WorkingDirectory must match
+   the database initialization directory; grant the service account suitable
+   file permissions.
+5. Configure `<HTTPS_HOST>`, valid TLS and a reverse proxy. Keep Uvicorn bound
+   to loopback and port 8000 private. Configure both cloud and host firewalls,
+   restrict SSH to authorized administration sources and retain TLS verification.
+6. On the Pi, locally set uploader `CLOUD_URL` to
+   `https://<HTTPS_HOST>/api/telemetry` and `DEVICE_ID` to `<DEVICE_ID>`.
+   Configure the same API token. URL and device ID currently use code constants.
+   Adjust the uploader service account, paths and EnvironmentFile. Confirm a
+   successful single upload before enabling its timer.
+7. Verify `/health`, a new database row, invalid-token rejection, HTTPS
+   login/logout, session/CSRF behavior, all five history windows and offline gaps.
+   A successful health response alone does not verify database or hardware operation.
+
+Keep `.env`, passwords, tokens, private keys, SQLite/WAL files, telemetry CSV,
+backups and private operational records out of Git. `.gitignore` does not remove
+already tracked secrets; inspect staged changes and history before committing.
+Use independent random values for the session secret and API token. Use HTTPS
+for session cookies and keep API tokens out of frontend code.
+See Cloud deployment for further installation details. Its older history-window
+and row-cap descriptions are superseded by this README's V0.2 description.
 
 ## Documentation
 
@@ -669,13 +762,16 @@ to be committed to Git.
 - [x] Live status API (`/api/status`)
 - [x] Live dashboard updates without full-page reload
 - [x] Cloud telemetry uploader and timer templates
-- [ ] Verify end-to-end Oracle Cloud HTTPS deployment
+- [x] Oracle V0.2 Production deployment recorded (current live regression checks pending)
 - [x] SQLite cloud telemetry storage
 - [x] Password-protected cloud web dashboard and history charts
 - [x] Device online/offline and last-seen status based on telemetry age
 - [x] Cloud CPU temperature, CPU usage and RAM history charts
 - [x] Cloud battery / IO voltage and current history charts
-- [x] Cloud history time ranges (1 / 6 / 24 hours)
+- [x] Cloud history time ranges (1 / 6 / 24 / 48 / 168 hours) and offline gaps
+- [ ] V0.3: durable offline buffer with bounded storage and retry/backoff
+- [ ] V0.3: measurement timestamps, idempotent historical backfill and deduplication
+- [ ] V0.3: test network outage, reboot recovery, replay ordering and clock skew
 - [ ] Battery temperature history chart
 - [ ] Run local web dashboard automatically as a system service
 - [ ] MQTT
